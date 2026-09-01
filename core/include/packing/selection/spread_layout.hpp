@@ -1,5 +1,5 @@
-#ifndef PACKING_SPREAD_LAYOUT_HPP
-#define PACKING_SPREAD_LAYOUT_HPP
+#ifndef PACKING_SELECTION_SPREAD_LAYOUT_HPP
+#define PACKING_SELECTION_SPREAD_LAYOUT_HPP
 
 #include "packing/geometry.hpp"
 
@@ -30,7 +30,7 @@ struct spread_layout_result {
     spread_layout_algorithm algorithm { spread_layout_algorithm::automatic };
 };
 
-inline constexpr std::size_t spread_swap_dispatch_limit = 8;
+inline constexpr std::size_t spread_swap_dispatch_limit = 32;
 
 [[nodiscard]] spread_layout_algorithm
 select_spread_layout_algorithm(const spread_layout_request& request) noexcept;
@@ -41,4 +41,4 @@ algorithm_name(spread_layout_algorithm algorithm) noexcept;
 
 } // namespace packing
 
-#endif // PACKING_SPREAD_LAYOUT_HPP
+#endif // PACKING_SELECTION_SPREAD_LAYOUT_HPP

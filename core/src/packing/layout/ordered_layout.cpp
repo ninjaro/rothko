@@ -1,4 +1,4 @@
-#include "packing/ordered_layout.hpp"
+#include "packing/layout/ordered_layout.hpp"
 
 #include <algorithm>
 #include <cmath>

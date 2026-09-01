@@ -1,4 +1,4 @@
-#include "packing/equal_rectangles.hpp"
+#include "packing/layout/equal_rectangles.hpp"
 
 #include <iostream>
 

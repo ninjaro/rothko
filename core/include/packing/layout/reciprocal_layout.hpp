@@ -1,5 +1,5 @@
-#ifndef PACKING_RECIPROCAL_LAYOUT_HPP
-#define PACKING_RECIPROCAL_LAYOUT_HPP
+#ifndef PACKING_LAYOUT_RECIPROCAL_LAYOUT_HPP
+#define PACKING_LAYOUT_RECIPROCAL_LAYOUT_HPP
 
 #include "packing/geometry.hpp"
 
@@ -51,4 +51,4 @@ algorithm_name(reciprocal_layout_algorithm algorithm) noexcept;
 
 } // namespace packing
 
-#endif // PACKING_RECIPROCAL_LAYOUT_HPP
+#endif // PACKING_LAYOUT_RECIPROCAL_LAYOUT_HPP

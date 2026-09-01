@@ -1,5 +1,5 @@
-#ifndef PACKING_COMPACT_LAYOUT_HPP
-#define PACKING_COMPACT_LAYOUT_HPP
+#ifndef PACKING_SELECTION_COMPACT_LAYOUT_HPP
+#define PACKING_SELECTION_COMPACT_LAYOUT_HPP
 
 #include "packing/geometry.hpp"
 
@@ -12,7 +12,6 @@ namespace packing {
 
 enum class compact_layout_algorithm {
     automatic,
-    nearest_center,
     exact_bounding_box,
     void_refined,
 };
@@ -31,7 +30,8 @@ struct compact_layout_result {
     compact_layout_algorithm algorithm { compact_layout_algorithm::automatic };
 };
 
-inline constexpr std::size_t compact_refinement_dispatch_limit = 16;
+inline constexpr std::size_t compact_refinement_count_limit = 32;
+inline constexpr std::size_t compact_refinement_surplus_limit = 8;
 
 [[nodiscard]] compact_layout_algorithm
 select_compact_layout_algorithm(const compact_layout_request& request) noexcept;
@@ -42,4 +42,4 @@ algorithm_name(compact_layout_algorithm algorithm) noexcept;
 
 } // namespace packing
 
-#endif // PACKING_COMPACT_LAYOUT_HPP
+#endif // PACKING_SELECTION_COMPACT_LAYOUT_HPP

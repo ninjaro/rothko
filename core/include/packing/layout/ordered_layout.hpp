@@ -1,5 +1,5 @@
-#ifndef PACKING_ORDERED_LAYOUT_HPP
-#define PACKING_ORDERED_LAYOUT_HPP
+#ifndef PACKING_LAYOUT_ORDERED_LAYOUT_HPP
+#define PACKING_LAYOUT_ORDERED_LAYOUT_HPP
 
 #include "packing/geometry.hpp"
 
@@ -61,7 +61,7 @@ struct ordered_layout_result {
     ordered_layout_algorithm algorithm { ordered_layout_algorithm::automatic };
 };
 
-inline constexpr std::size_t balanced_shelf_dispatch_limit = 16;
+inline constexpr std::size_t balanced_shelf_dispatch_limit = 128;
 
 [[nodiscard]] ordered_layout_algorithm
 select_ordered_layout_algorithm(const ordered_layout_request& request) noexcept;
@@ -72,4 +72,4 @@ algorithm_name(ordered_layout_algorithm algorithm) noexcept;
 
 } // namespace packing
 
-#endif // PACKING_ORDERED_LAYOUT_HPP
+#endif // PACKING_LAYOUT_ORDERED_LAYOUT_HPP

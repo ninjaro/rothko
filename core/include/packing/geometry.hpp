@@ -11,6 +11,11 @@ struct extent {
     double height { 0.0 };
 };
 
+struct point {
+    double x { 0.0 };
+    double y { 0.0 };
+};
+
 struct rectangle {
     double x { 0.0 };
     double y { 0.0 };
@@ -44,6 +49,10 @@ struct validation_report {
 [[nodiscard]] bool intersects(
     const rectangle& lhs, const rectangle& rhs, double epsilon = 1e-9
 ) noexcept;
+[[nodiscard]] double
+squared_distance(point sample, const rectangle& item) noexcept;
+[[nodiscard]] bool
+translate(std::span<rectangle> rectangles, point offset) noexcept;
 [[nodiscard]] bounds
 bounding_box(std::span<const rectangle> rectangles) noexcept;
 [[nodiscard]] validation_report validate(

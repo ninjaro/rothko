@@ -1,4 +1,4 @@
-#include "packing/spread_layout.hpp"
+#include "packing/selection/spread_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,11 +16,6 @@ namespace {
     constexpr std::size_t absolute_sample_limit = 8192;
     constexpr std::size_t absolute_swap_pass_limit = 16;
     constexpr std::size_t translation_move_limit = 128;
-
-    struct point {
-        double x { 0.0 };
-        double y { 0.0 };
-    };
 
     struct coverage_key {
         double mean_squared_distance {
@@ -138,19 +133,6 @@ namespace {
         return points;
     }
 
-    [[nodiscard]] double
-    point_distance_squared(const point sample, const rectangle& item) noexcept {
-        const double right = item.x + item.width;
-        const double bottom = item.y + item.height;
-        const double dx = sample.x < item.x
-            ? item.x - sample.x
-            : (sample.x > right ? sample.x - right : 0.0);
-        const double dy = sample.y < item.y
-            ? item.y - sample.y
-            : (sample.y > bottom ? sample.y - bottom : 0.0);
-        return dx * dx + dy * dy;
-    }
-
     [[nodiscard]] bool better_coverage_key(
         const coverage_key& candidate, const coverage_key& current
     ) noexcept {
@@ -184,7 +166,7 @@ namespace {
             values_.reserve(candidates.size() * point_count_);
             for (const rectangle& item : candidates) {
                 for (const point sample : points) {
-                    values_.push_back(point_distance_squared(sample, item));
+                    values_.push_back(squared_distance(sample, item));
                 }
             }
         }
@@ -380,8 +362,7 @@ namespace {
         for (const point sample : points) {
             double nearest = std::numeric_limits<double>::infinity();
             for (const rectangle& item : rectangles) {
-                nearest
-                    = std::min(nearest, point_distance_squared(sample, item));
+                nearest = std::min(nearest, squared_distance(sample, item));
                 if (nearest <= 0.0) {
                     break;
                 }
@@ -399,15 +380,6 @@ namespace {
         };
     }
 
-    void translate(
-        std::vector<rectangle>& rectangles, const double dx, const double dy
-    ) noexcept {
-        for (rectangle& item : rectangles) {
-            item.x += dx;
-            item.y += dy;
-        }
-    }
-
     [[nodiscard]] bool center_in_container(
         const extent container, std::vector<rectangle>& rectangles
     ) noexcept {
@@ -423,11 +395,11 @@ namespace {
             = container.width / 2.0 - (current.left + current.right) / 2.0;
         const double desired_dy
             = container.height / 2.0 - (current.top + current.bottom) / 2.0;
-        translate(
-            rectangles, std::clamp(desired_dx, minimum_dx, maximum_dx),
-            std::clamp(desired_dy, minimum_dy, maximum_dy)
+        return translate(
+            rectangles,
+            { std::clamp(desired_dx, minimum_dx, maximum_dx),
+              std::clamp(desired_dy, minimum_dy, maximum_dy) }
         );
-        return true;
     }
 
     [[nodiscard]] bool optimize_translation(
@@ -491,7 +463,9 @@ namespace {
                         continue;
                     }
                     std::vector<rectangle> trial = rectangles;
-                    translate(trial, dx, dy);
+                    if (!translate(trial, { dx, dy })) {
+                        continue;
+                    }
                     const coverage_key candidate
                         = coverage_score(points, trial);
                     if (better_coverage_key(candidate, best)) {

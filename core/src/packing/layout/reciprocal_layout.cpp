@@ -1,4 +1,4 @@
-#include "packing/reciprocal_layout.hpp"
+#include "packing/layout/reciprocal_layout.hpp"
 
 #include <algorithm>
 #include <cmath>

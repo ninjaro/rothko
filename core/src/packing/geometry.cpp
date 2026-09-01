@@ -30,6 +30,42 @@ bool intersects(
         && rhs.y + rhs.height > lhs.y + epsilon;
 }
 
+double squared_distance(const point sample, const rectangle& item) noexcept {
+    if (!std::isfinite(sample.x) || !std::isfinite(sample.y)
+        || !is_finite(item)) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    const double right = item.x + item.width;
+    const double bottom = item.y + item.height;
+    const double dx = sample.x < item.x
+        ? item.x - sample.x
+        : (sample.x > right ? sample.x - right : 0.0);
+    const double dy = sample.y < item.y
+        ? item.y - sample.y
+        : (sample.y > bottom ? sample.y - bottom : 0.0);
+    return dx * dx + dy * dy;
+}
+
+bool translate(
+    const std::span<rectangle> rectangles, const point offset
+) noexcept {
+    if (!std::isfinite(offset.x) || !std::isfinite(offset.y)) {
+        return false;
+    }
+    for (const rectangle& item : rectangles) {
+        if (!is_finite(item) || !std::isfinite(item.x + offset.x)
+            || !std::isfinite(item.y + offset.y)) {
+            return false;
+        }
+    }
+    for (rectangle& item : rectangles) {
+        item.x += offset.x;
+        item.y += offset.y;
+    }
+    return true;
+}
+
 bounds bounding_box(const std::span<const rectangle> rectangles) noexcept {
     if (rectangles.empty()) {
         return {};

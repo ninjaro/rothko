@@ -1,4 +1,4 @@
-#include "packing/equal_rectangles.hpp"
+#include "packing/layout/equal_rectangles.hpp"
 
 #include "packing/geometry.hpp"
 
@@ -544,7 +544,7 @@ namespace {
         return selected;
     }
 
-    [[nodiscard]] equal_packing_result make_frame_result(
+    [[nodiscard]] equal_candidate_result make_frame_candidate_result(
         const equal_packing_request& request, canonical_item item, double scale,
         equal_packing_algorithm algorithm
     ) {
@@ -559,17 +559,10 @@ namespace {
             return { 0.0, {}, algorithm };
         }
 
-        std::vector<rectangle> selected = select_and_center(
-            request.container, std::move(candidates), request.count
-        );
-        if (selected.size() != request.count
-            || !validate(request.container, selected).valid) {
-            return { 0.0, {}, algorithm };
-        }
-        return { scale, std::move(selected), algorithm };
+        return { scale, std::move(candidates), algorithm };
     }
 
-    [[nodiscard]] equal_packing_result pack_certified_frame(
+    [[nodiscard]] equal_candidate_result generate_certified_frame_candidates(
         const equal_packing_request& request, canonical_item item
     ) {
         constexpr equal_packing_algorithm algorithm
@@ -607,16 +600,16 @@ namespace {
                 continue;
             }
 
-            equal_packing_result result
-                = make_frame_result(request, item, scale, algorithm);
-            if (result.complete(request.count)) {
+            equal_candidate_result result
+                = make_frame_candidate_result(request, item, scale, algorithm);
+            if (result.sufficient(request.count)) {
                 return result;
             }
         }
         return { 0.0, {}, algorithm };
     }
 
-    [[nodiscard]] equal_packing_result pack_count_binary_frame(
+    [[nodiscard]] equal_candidate_result generate_count_binary_frame_candidates(
         const equal_packing_request& request, canonical_item item
     ) {
         constexpr equal_packing_algorithm algorithm
@@ -639,10 +632,10 @@ namespace {
                 right = scale;
             }
         }
-        return make_frame_result(request, item, left, algorithm);
+        return make_frame_candidate_result(request, item, left, algorithm);
     }
 
-    [[nodiscard]] equal_packing_result pack_grid(
+    [[nodiscard]] equal_candidate_result generate_grid_candidates(
         const equal_packing_request& request, canonical_item item,
         bool vertical, equal_packing_algorithm algorithm
     ) {
@@ -755,8 +748,8 @@ select_equal_packing_algorithm(const equal_packing_request& request) noexcept {
     return equal_packing_algorithm::certified_frame;
 }
 
-equal_packing_result
-pack_equal_rectangles(const equal_packing_request& request) {
+equal_candidate_result
+generate_equal_rectangle_candidates(const equal_packing_request& request) {
     const equal_packing_algorithm algorithm
         = select_equal_packing_algorithm(request);
     if (!valid_request(request)
@@ -767,17 +760,42 @@ pack_equal_rectangles(const equal_packing_request& request) {
     const canonical_item item = canonicalize(request.item);
     switch (algorithm) {
     case equal_packing_algorithm::certified_frame:
-        return pack_certified_frame(request, item);
+        return generate_certified_frame_candidates(request, item);
     case equal_packing_algorithm::count_binary_frame:
-        return pack_count_binary_frame(request, item);
+        return generate_count_binary_frame_candidates(request, item);
     case equal_packing_algorithm::horizontal_grid:
-        return pack_grid(request, item, false, algorithm);
+        return generate_grid_candidates(request, item, false, algorithm);
     case equal_packing_algorithm::vertical_grid:
-        return pack_grid(request, item, true, algorithm);
+        return generate_grid_candidates(request, item, true, algorithm);
     case equal_packing_algorithm::automatic:
         break;
     }
     return { 0.0, {}, algorithm };
+}
+
+equal_packing_result
+pack_equal_rectangles(const equal_packing_request& request) {
+    equal_candidate_result candidates
+        = generate_equal_rectangle_candidates(request);
+    if (!candidates.sufficient(request.count)) {
+        return { 0.0, {}, candidates.algorithm };
+    }
+    if (candidates.rectangles.size() == request.count) {
+        return {
+            candidates.scale,
+            std::move(candidates.rectangles),
+            candidates.algorithm,
+        };
+    }
+
+    std::vector<rectangle> selected = select_and_center(
+        request.container, std::move(candidates.rectangles), request.count
+    );
+    if (selected.size() != request.count
+        || !validate(request.container, selected).valid) {
+        return { 0.0, {}, candidates.algorithm };
+    }
+    return { candidates.scale, std::move(selected), candidates.algorithm };
 }
 
 std::string_view algorithm_name(equal_packing_algorithm algorithm) noexcept {

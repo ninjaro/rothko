@@ -1,4 +1,4 @@
-#include "packing/compact_layout.hpp"
+#include "packing/selection/compact_layout.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +39,6 @@ namespace {
     is_known(const compact_layout_algorithm algorithm) noexcept {
         switch (algorithm) {
         case compact_layout_algorithm::automatic:
-        case compact_layout_algorithm::nearest_center:
         case compact_layout_algorithm::exact_bounding_box:
         case compact_layout_algorithm::void_refined:
             return true;
@@ -98,38 +97,6 @@ namespace {
             return candidate.perimeter < current.perimeter;
         }
         return candidate.indices < current.indices;
-    }
-
-    [[nodiscard]] std::vector<std::size_t>
-    select_nearest_center_indices(const compact_layout_request& request) {
-        std::vector<std::size_t> indices(request.candidates.size());
-        std::iota(indices.begin(), indices.end(), std::size_t { 0 });
-
-        const double center_x = request.container.width / 2.0;
-        const double center_y = request.container.height / 2.0;
-        std::ranges::stable_sort(
-            indices, [&](const std::size_t lhs, const std::size_t rhs) {
-                const rectangle& lhs_item = request.candidates[lhs];
-                const rectangle& rhs_item = request.candidates[rhs];
-                const double lhs_dx
-                    = lhs_item.x + lhs_item.width / 2.0 - center_x;
-                const double lhs_dy
-                    = lhs_item.y + lhs_item.height / 2.0 - center_y;
-                const double rhs_dx
-                    = rhs_item.x + rhs_item.width / 2.0 - center_x;
-                const double rhs_dy
-                    = rhs_item.y + rhs_item.height / 2.0 - center_y;
-                const double lhs_distance = lhs_dx * lhs_dx + lhs_dy * lhs_dy;
-                const double rhs_distance = rhs_dx * rhs_dx + rhs_dy * rhs_dy;
-                if (lhs_distance != rhs_distance) {
-                    return lhs_distance < rhs_distance;
-                }
-                return lhs < rhs;
-            }
-        );
-        indices.resize(request.count);
-        std::ranges::sort(indices);
-        return indices;
     }
 
     [[nodiscard]] std::vector<std::size_t> select_exact_bounding_box_indices(
@@ -304,18 +271,6 @@ namespace {
         return { columns, rows };
     }
 
-    [[nodiscard]] double point_distance_squared(
-        const double x, const double y, const rectangle& item
-    ) noexcept {
-        const double right = item.x + item.width;
-        const double bottom = item.y + item.height;
-        const double dx
-            = x < item.x ? item.x - x : (x > right ? x - right : 0.0);
-        const double dy
-            = y < item.y ? item.y - y : (y > bottom ? y - bottom : 0.0);
-        return dx * dx + dy * dy;
-    }
-
     [[nodiscard]] void_key score_internal_void(
         const std::span<const rectangle> candidates,
         const std::span<const std::size_t> indices,
@@ -356,7 +311,7 @@ namespace {
                 double nearest = std::numeric_limits<double>::infinity();
                 for (const std::size_t index : indices) {
                     nearest = std::min(
-                        nearest, point_distance_squared(x, y, candidates[index])
+                        nearest, squared_distance({ x, y }, candidates[index])
                     );
                     if (nearest <= 0.0) {
                         break;
@@ -502,11 +457,7 @@ namespace {
 
         const double offset_x = std::clamp(desired_x, minimum_x, maximum_x);
         const double offset_y = std::clamp(desired_y, minimum_y, maximum_y);
-        for (rectangle& item : rectangles) {
-            item.x += offset_x;
-            item.y += offset_y;
-        }
-        return true;
+        return translate(rectangles, { offset_x, offset_y });
     }
 
 } // namespace
@@ -522,7 +473,9 @@ compact_layout_algorithm select_compact_layout_algorithm(
     if (request.candidates.size() <= request.count) {
         return compact_layout_algorithm::automatic;
     }
-    return request.count <= compact_refinement_dispatch_limit
+    const std::size_t surplus = request.candidates.size() - request.count;
+    return request.count <= compact_refinement_count_limit
+            && surplus <= compact_refinement_surplus_limit
         ? compact_layout_algorithm::void_refined
         : compact_layout_algorithm::exact_bounding_box;
 }
@@ -547,9 +500,6 @@ select_compact_layout(const compact_layout_request& request) {
 
     std::vector<std::size_t> selected_indices;
     switch (algorithm) {
-    case compact_layout_algorithm::nearest_center:
-        selected_indices = select_nearest_center_indices(request);
-        break;
     case compact_layout_algorithm::exact_bounding_box:
         selected_indices = select_exact_bounding_box_indices(
             request.candidates, request.count
@@ -581,8 +531,6 @@ algorithm_name(const compact_layout_algorithm algorithm) noexcept {
     switch (algorithm) {
     case compact_layout_algorithm::automatic:
         return "automatic";
-    case compact_layout_algorithm::nearest_center:
-        return "nearest_center";
     case compact_layout_algorithm::exact_bounding_box:
         return "exact_bounding_box";
     case compact_layout_algorithm::void_refined:
