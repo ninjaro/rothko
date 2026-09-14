@@ -22,7 +22,9 @@ function(ecosystem_apply_defaults target_name)
         set(target_scope INTERFACE)
     endif ()
 
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    if (MSVC)
+        target_compile_options(${target_name} ${target_scope} /W4 /WX)
+    elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(${target_name}
                 ${target_scope}
                 -Wall
@@ -31,7 +33,8 @@ function(ecosystem_apply_defaults target_name)
                 -Wconversion
                 -Wsign-conversion
                 -Wshadow
-                -Wnon-virtual-dtor
+                -Werror
+                "$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>"
         )
     endif ()
 
@@ -49,45 +52,47 @@ function(ecosystem_apply_defaults target_name)
     endif ()
 endfunction()
 
-
-set(PACKING_LIBRARY_HEADERS
+set(PACKING_LIBRARY_CORE_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/geometry.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/equal_rectangles.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/compact_layout.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/spread_layout.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/ordered_layout.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/reciprocal_layout.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/equal_rectangles.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/fixed_size_layout.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/free_order_layout.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/ordered_layout.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/reciprocal_layout.hpp
 )
-set(PACKING_LIBRARY_SOURCES
+set(PACKING_LIBRARY_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/geometry.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/equal_rectangles.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/compact_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/spread_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/ordered_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/reciprocal_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/equal_rectangles.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/fixed_size_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/free_order_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/ordered_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/reciprocal_layout.cpp
 )
-set(PACKING_LIBRARY_RUNTIME_SOURCES
+set(PACKING_LIBRARY_CORE_RUNTIME_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/geometry.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/equal_rectangles.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/compact_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/spread_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/ordered_layout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/reciprocal_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/equal_rectangles.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/fixed_size_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/free_order_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/ordered_layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/src/packing/layout/reciprocal_layout.cpp
 )
-set(PACKING_LIBRARY_DEMO_HEADERS
+set(PACKING_LIBRARY_DEMO_DEMO_HEADERS
 )
-set(PACKING_LIBRARY_DEMO_SOURCES
+set(PACKING_LIBRARY_DEMO_DEMO_SOURCES
 )
-set(PACKING_LIBRARY_DEMO_RUNTIME_SOURCES
+set(PACKING_LIBRARY_DEMO_DEMO_RUNTIME_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/src/main.cpp
 )
 add_library(library__core STATIC
-    ${PACKING_LIBRARY_HEADERS}
-    ${PACKING_LIBRARY_SOURCES}
+    ${PACKING_LIBRARY_CORE_HEADERS}
+    ${PACKING_LIBRARY_CORE_SOURCES}
 )
 
+target_compile_features(library__core PUBLIC cxx_std_20)
+
 target_include_directories(library__core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
 set_target_properties(library__core PROPERTIES OUTPUT_NAME packing_core)
@@ -101,9 +106,11 @@ target_compile_definitions(library__core
 
 
 add_executable(library_demo__demo
-    ${PACKING_LIBRARY_DEMO_HEADERS}
-    ${PACKING_LIBRARY_DEMO_RUNTIME_SOURCES}
+    ${PACKING_LIBRARY_DEMO_DEMO_HEADERS}
+    ${PACKING_LIBRARY_DEMO_DEMO_RUNTIME_SOURCES}
 )
+
+target_compile_features(library_demo__demo PRIVATE cxx_std_20)
 
 target_include_directories(library_demo__demo PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/include
@@ -123,9 +130,95 @@ target_compile_definitions(library_demo__demo
 )
 
 
+# The visitor name is generated state; the selected target keeps its identity.
+# Retire a previous link/copy before a new selection can build at the same path.
+foreach(facade_name mvp mvp.exe)
+    if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/manifesto-${facade_name}.owned")
+        file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/${facade_name}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/manifesto-${facade_name}.owned")
+    endif()
+endforeach()
+
+get_target_property(MANIFESTO_FACADE_TYPE library_demo__demo TYPE)
+if(MANIFESTO_FACADE_TYPE STREQUAL "EXECUTABLE" AND NOT ANDROID)
+    if(WIN32)
+        set(MANIFESTO_FACADE_NAME mvp.exe)
+    else()
+        set(MANIFESTO_FACADE_NAME mvp)
+    endif()
+    file(GENERATE
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/manifesto-facade-$<CONFIG>.cmake"
+        CONTENT [=[
+set(source "$<TARGET_FILE:library_demo__demo>")
+set(destination "${FACADE_DIR}/${FACADE_NAME}")
+if(source STREQUAL destination)
+    return()
+endif()
+if(WIN32)
+    file(CREATE_LINK "${source}" "${destination}" COPY_ON_ERROR)
+else()
+    file(RELATIVE_PATH relative "${FACADE_DIR}" "${source}")
+    file(CREATE_LINK "${relative}" "${destination}" SYMBOLIC)
+endif()
+file(WRITE "${FACADE_DIR}/CMakeFiles/manifesto-${FACADE_NAME}.owned" "generated\n")
+]=])
+    add_custom_target(_manifesto_visitor_facade_packing ALL
+        COMMAND "${CMAKE_COMMAND}"
+            "-DFACADE_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DFACADE_NAME=${MANIFESTO_FACADE_NAME}"
+            -P "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/manifesto-facade-$<CONFIG>.cmake"
+        DEPENDS library_demo__demo
+        VERBATIM)
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/${MANIFESTO_FACADE_NAME}"
+        "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/manifesto-${MANIFESTO_FACADE_NAME}.owned")
+endif()
+
+install(TARGETS library__core EXPORT packingTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/geometry.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing")
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/equal_rectangles.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing/layout")
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/fixed_size_layout.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing/layout")
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/free_order_layout.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing/layout")
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/ordered_layout.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing/layout")
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/core/include/packing/layout/reciprocal_layout.hpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/packing/layout")
+
 install(TARGETS library_demo__demo
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+include(CMakePackageConfigHelpers)
+set(_packing_package_dir "${CMAKE_CURRENT_BINARY_DIR}/packing-package")
+file(MAKE_DIRECTORY "${_packing_package_dir}")
+file(WRITE "${_packing_package_dir}/packingConfig.cmake.in" [==[
+if (TARGET packing::library__core)
+    return()
+endif ()
+set(_packing_saved_kde "${ECOSYSTEM_PROFILE_KDE}")
+set(ECOSYSTEM_PROFILE_KDE "@ECOSYSTEM_PROFILE_KDE@")
+set(ECOSYSTEM_PROFILE_KDE "${_packing_saved_kde}")
+unset(_packing_saved_kde)
+
+include("${CMAKE_CURRENT_LIST_DIR}/packingTargets.cmake")
+]==])
+configure_file("${_packing_package_dir}/packingConfig.cmake.in"
+               "${_packing_package_dir}/packingConfig.cmake" @ONLY)
+write_basic_package_version_file("${_packing_package_dir}/packingConfigVersion.cmake"
+                                VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(EXPORT packingTargets NAMESPACE packing::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/packing")
+install(FILES "${_packing_package_dir}/packingConfig.cmake"
+              "${_packing_package_dir}/packingConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/packing")
 
