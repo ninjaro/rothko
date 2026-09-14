@@ -1,0 +1,67 @@
+{
+  "id": "packing",
+  "description": "Benchmark-driven rectangle packing and heterogeneous viewport layout library.",
+  "version": "0.1.0",
+  "cpp_standard": 20,
+  "facade": "library_demo:demo",
+  "install_artifacts": [
+    "library:core"
+  ],
+  "artifacts": [
+    {
+      "id": "library:core",
+      "kind": "static_lib",
+      "name": "packing_core",
+      "root": "core",
+      "owns": [
+        "include/packing/geometry.hpp",
+        "src/packing/geometry.cpp",
+        "include/packing/layout",
+        "src/packing/layout"
+      ]
+    },
+    {
+      "id": "selection:selection",
+      "kind": "static_lib",
+      "name": "packing_selection",
+      "root": "core",
+      "owns": [
+        "include/packing/selection",
+        "src/packing/selection"
+      ],
+      "dependencies": [
+        "library:core"
+      ]
+    },
+    {
+      "id": "library_demo:demo",
+      "kind": "exe",
+      "name": "mvp",
+      "root": "core",
+      "owns": [
+        "src/main.cpp"
+      ],
+      "entry": "src/main.cpp",
+      "dependencies": [
+        "library:core"
+      ]
+    },
+    {
+      "id": "library_benchmarks:bench",
+      "kind": "exe",
+      "name": "packing_benchmarks",
+      "root": "core",
+      "owns": [
+        "benchmarks/packing/packing_benchmarks.cpp"
+      ],
+      "entry": "benchmarks/packing/packing_benchmarks.cpp",
+      "dependencies": [
+        "library:core",
+        "selection:selection"
+      ],
+      "benchmarks": {
+        "google_benchmark": true
+      }
+    }
+  ]
+}
