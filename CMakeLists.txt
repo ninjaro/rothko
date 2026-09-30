@@ -100,7 +100,7 @@ set_target_properties(library__core PROPERTIES OUTPUT_NAME packing_core)
 ecosystem_apply_defaults(library__core)
 
 target_compile_definitions(library__core
-        PUBLIC
+        PRIVATE
         ECOSYSTEM_PROJECT_VERSION="${PROJECT_VERSION}"
 )
 
