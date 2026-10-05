@@ -38,6 +38,11 @@ struct equal_packing_result {
     double scale { 0.0 };
     std::vector<rectangle> rectangles;
     equal_packing_algorithm algorithm { equal_packing_algorithm::automatic };
+    // Permutation of physical rectangle indices, separate from storage order.
+    // Generated from this layout only: no deck IDs, prior layouts or animation.
+    // A successful pack always includes every index exactly once. Geometric
+    // neighbors are preferred, but a neighboring cyclic wrap is not guaranteed.
+    std::vector<std::size_t> traversal {};
 
     [[nodiscard]] bool complete(std::size_t requested_count) const noexcept {
         return scale > 0.0 && rectangles.size() == requested_count;
