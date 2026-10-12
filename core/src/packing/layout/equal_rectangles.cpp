@@ -17,6 +17,129 @@ namespace {
     constexpr std::size_t maximum_frame_recursion_depth = 4096;
     constexpr std::uint64_t maximum_certified_scan_steps = 1'000'000;
 
+    // Traversal is post-processing, not a packing policy. It never rearranges
+    // rectangles/source_index or influences scale, selection or orientation.
+    [[nodiscard]] std::vector<std::size_t> spatial_traversal(
+        extent container, const std::vector<rectangle>& rectangles
+    ) {
+        struct position {
+            long double left, top, right, bottom, center_x, center_y;
+        };
+
+        std::vector<position> positions;
+        positions.reserve(rectangles.size());
+        // Normalize BEFORE subtraction/squaring so large finite coordinates do
+        // not overflow even on platforms where long double equals double.
+        const long double unit = std::max(container.width, container.height);
+        constexpr long double tolerance
+            = 16 * std::numeric_limits<double>::epsilon();
+        for (const auto& item : rectangles) {
+            const long double left = item.x / unit;
+            const long double top = item.y / unit;
+            const long double width = item.width / unit;
+            const long double height = item.height / unit;
+            positions.push_back(
+                { left, top, left + width, top + height, left + width / 2,
+                  top + height / 2 }
+            );
+        }
+        const auto distance = [&](std::size_t a, std::size_t b) {
+            const auto& first = positions[a];
+            const auto& second = positions[b];
+            auto dx = std::max(
+                { 0.0L, first.left - second.right, second.left - first.right }
+            );
+            auto dy = std::max(
+                { 0.0L, first.top - second.bottom, second.top - first.bottom }
+            );
+            const auto cx = first.center_x - second.center_x;
+            const auto cy = first.center_y - second.center_y;
+            // Dividing each edge separately must not turn a touching neighbor
+            // into a positive-gap candidate and prefer a distant zero-gap one.
+            if (dx <= tolerance) {
+                dx = 0;
+            }
+            if (dy <= tolerance) {
+                dy = 0;
+            }
+            return std::pair { dx * dx + dy * dy, cx * cx + cy * cy };
+        };
+        // Only used in deterministic linear scans, not as a sorting predicate.
+        // Numerically equal distances keep the lower physical index.
+        const auto nearer = [](const auto& a, const auto& b) {
+            if (std::abs(a.first - b.first) > tolerance * tolerance) {
+                return a.first < b.first;
+            }
+            return a.second + tolerance < b.second;
+        };
+        std::vector<std::size_t> order;
+        if (positions.empty()) {
+            return order;
+        }
+        std::size_t first = 0;
+        for (std::size_t i = 1; i < positions.size(); ++i) {
+            if (std::pair { positions[i].center_y, positions[i].center_x }
+                < std::pair { positions[first].center_y,
+                              positions[first].center_x }) {
+                first = i;
+            }
+        }
+        order.reserve(positions.size());
+        std::vector<bool> visited(positions.size(), false);
+        order.push_back(first);
+        visited[first] = true;
+        while (order.size() < positions.size()) {
+            std::size_t next = positions.size();
+            std::pair<long double, long double> nearest_distance {};
+            for (std::size_t i = 0; i < positions.size(); ++i) {
+                if (visited[i]) {
+                    continue;
+                }
+                const auto candidate_distance = distance(order.back(), i);
+                if (next == positions.size()
+                    || nearer(candidate_distance, nearest_distance)) {
+                    next = i;
+                    nearest_distance = candidate_distance;
+                }
+            }
+            order.push_back(next);
+            visited[next] = true;
+        }
+
+        // One bounded closing-edge repair, not an iterative tour solver:
+        // A->B ... Z->first becomes A->Z ... B->first by reversing a suffix.
+        // Never worsen the replaced interior edge just to improve the wrap.
+        // A single row must stay a continuous chain, not gain a middle jump
+        // to hide the inevitable long wrap. Ties retain the original path.
+        std::size_t cut = order.size();
+        std::pair<long double, long double> best_delta { 0, 0 };
+        const auto old_wrap = distance(order.back(), order.front());
+        for (std::size_t i = 1; i + 1 < order.size(); ++i) {
+            const auto old_edge = distance(order[i - 1], order[i]);
+            const auto new_edge = distance(order[i - 1], order.back());
+            const auto new_wrap = distance(order[i], order.front());
+            if (nearer(old_edge, new_edge) || !nearer(new_wrap, old_wrap)) {
+                continue;
+            }
+            const std::pair delta {
+                new_edge.first + new_wrap.first - old_edge.first
+                    - old_wrap.first,
+                new_edge.second + new_wrap.second - old_edge.second
+                    - old_wrap.second,
+            };
+            if (nearer(delta, best_delta)) {
+                cut = i;
+                best_delta = delta;
+            }
+        }
+        if (cut < order.size()) {
+            std::reverse(
+                order.begin() + static_cast<std::ptrdiff_t>(cut), order.end()
+            );
+        }
+        return order;
+    }
+
     struct canonical_item {
         double long_side { 0.0 };
         double short_side { 0.0 };
@@ -781,10 +904,13 @@ pack_equal_rectangles(const equal_packing_request& request) {
         return { 0.0, {}, candidates.algorithm };
     }
     if (candidates.rectangles.size() == request.count) {
+        auto traversal
+            = spatial_traversal(request.container, candidates.rectangles);
         return {
             candidates.scale,
             std::move(candidates.rectangles),
             candidates.algorithm,
+            std::move(traversal),
         };
     }
 
@@ -795,7 +921,9 @@ pack_equal_rectangles(const equal_packing_request& request) {
         || !validate(request.container, selected).valid) {
         return { 0.0, {}, candidates.algorithm };
     }
-    return { candidates.scale, std::move(selected), candidates.algorithm };
+    auto traversal = spatial_traversal(request.container, selected);
+    return { candidates.scale, std::move(selected), candidates.algorithm,
+             std::move(traversal) };
 }
 
 std::string_view algorithm_name(equal_packing_algorithm algorithm) noexcept {

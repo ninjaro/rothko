@@ -17,8 +17,13 @@
         "include/packing/geometry.hpp",
         "src/packing/geometry.cpp",
         "include/packing/layout",
-        "src/packing/layout"
-      ]
+        "src/packing/layout",
+        "tests/packing/geometry_tests.cpp",
+        "tests/packing/layout"
+      ],
+      "tests": {
+        "gtest": true
+      }
     },
     {
       "id": "selection:selection",
@@ -27,11 +32,15 @@
       "root": "core",
       "owns": [
         "include/packing/selection",
-        "src/packing/selection"
+        "src/packing/selection",
+        "tests/packing/selection"
       ],
       "dependencies": [
         "library:core"
-      ]
+      ],
+      "tests": {
+        "gtest": true
+      }
     },
     {
       "id": "library_demo:demo",

@@ -4,10 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <numeric>
 #include <string_view>
 
 namespace packing {
@@ -18,6 +20,11 @@ namespace {
     ) {
         ASSERT_TRUE(result.complete(request.count));
         ASSERT_EQ(result.rectangles.size(), request.count);
+        auto traversal = result.traversal;
+        std::sort(traversal.begin(), traversal.end());
+        std::vector<std::size_t> expected(request.count);
+        std::iota(expected.begin(), expected.end(), std::size_t { 0 });
+        EXPECT_EQ(traversal, expected);
         EXPECT_TRUE(validate(request.container, result.rectangles).valid);
 
         for (std::size_t index = 0; index < result.rectangles.size(); ++index) {
@@ -34,6 +41,7 @@ namespace {
     ) {
         ASSERT_DOUBLE_EQ(lhs.scale, rhs.scale);
         ASSERT_EQ(lhs.algorithm, rhs.algorithm);
+        EXPECT_EQ(lhs.traversal, rhs.traversal);
         ASSERT_EQ(lhs.rectangles.size(), rhs.rectangles.size());
         for (std::size_t index = 0; index < lhs.rectangles.size(); ++index) {
             const rectangle& left = lhs.rectangles[index];
@@ -66,6 +74,7 @@ namespace {
         request.count = 0;
         EXPECT_EQ(pack_equal_rectangles(request).rectangles.size(), 0U);
         EXPECT_EQ(pack_equal_rectangles(request).scale, 0.0);
+        EXPECT_TRUE(pack_equal_rectangles(request).traversal.empty());
 
         request = card_request();
         request.container.width = 0.0;
@@ -106,6 +115,132 @@ namespace {
         EXPECT_EQ(result.algorithm, equal_packing_algorithm::certified_frame);
         EXPECT_EQ(result.scale, 0.0);
         EXPECT_TRUE(result.rectangles.empty());
+        EXPECT_TRUE(result.traversal.empty());
+    }
+
+    TEST(EqualRectangles, TraversalDoesNotReorderPhysicalSlots) {
+        const auto result = pack_equal_rectangles(
+            {
+                .container = { 200.0, 200.0 },
+                .item = { 1.0, 1.0 },
+                .count = 4,
+                .orientation = orientation_constraint::horizontal_only,
+            }
+        );
+        ASSERT_TRUE(result.complete(4));
+        EXPECT_EQ(result.traversal, (std::vector<std::size_t> { 0, 1, 3, 2 }));
+        // Storage remains row-major; a client never treats traversal as a new
+        // source_index mapping or has to move deck state to follow it.
+        for (std::size_t i = 0; i < 4; ++i) {
+            EXPECT_EQ(result.rectangles[i].source_index, i);
+            EXPECT_DOUBLE_EQ(
+                result.rectangles[i].x, static_cast<double>(i % 2) * 100.0
+            );
+            EXPECT_DOUBLE_EQ(
+                result.rectangles[i].y, static_cast<double>(i / 2) * 100.0
+            );
+        }
+    }
+
+    TEST(EqualRectangles, TraversalPrefersGridNeighborsIncludingWrap) {
+        const auto result = pack_equal_rectangles(
+            {
+                .container = { 300.0, 200.0 },
+                .item = { 1.0, 1.0 },
+                .count = 6,
+                .orientation = orientation_constraint::horizontal_only,
+            }
+        );
+        ASSERT_TRUE(result.complete(6));
+        ASSERT_EQ(result.traversal.size(), 6U);
+        for (std::size_t i = 0; i < result.traversal.size(); ++i) {
+            const auto& a = result.rectangles[result.traversal[i]];
+            const auto& b = result.rectangles[result.traversal[(i + 1) % 6]];
+            EXPECT_NEAR(std::hypot(a.x - b.x, a.y - b.y), 100.0, 1e-9);
+        }
+    }
+
+    TEST(EqualRectangles, TraversalAllowsNonNeighborWrapWithoutInteriorJump) {
+        const auto result = pack_equal_rectangles(
+            {
+                .container = { 500.0, 100.0 },
+                .item = { 1.0, 1.0 },
+                .count = 5,
+                .orientation = orientation_constraint::horizontal_only,
+            }
+        );
+        ASSERT_TRUE(result.complete(5));
+        EXPECT_EQ(
+            result.traversal, (std::vector<std::size_t> { 0, 1, 2, 3, 4 })
+        );
+    }
+
+    TEST(EqualRectangles, ClosingRepairKeepsInteriorNeighbors) {
+        const auto result = pack_equal_rectangles(
+            {
+                .container = { 400.0, 300.0 },
+                .item = { 1.0, 1.0 },
+                .count = 12,
+                .orientation = orientation_constraint::horizontal_only,
+            }
+        );
+        ASSERT_TRUE(result.complete(12));
+        ASSERT_EQ(result.traversal.size(), 12U);
+        for (std::size_t i = 1; i < result.traversal.size(); ++i) {
+            const auto& a = result.rectangles[result.traversal[i - 1]];
+            const auto& b = result.rectangles[result.traversal[i]];
+            EXPECT_NEAR(std::hypot(a.x - b.x, a.y - b.y), 100.0, 1e-9);
+        }
+        const auto& first = result.rectangles[result.traversal.front()];
+        const auto& last = result.rectangles[result.traversal.back()];
+        // The unrefined row snake ends bottom-right. One suffix repair can
+        // shorten its wrap without introducing any non-neighbor interior link.
+        EXPECT_LT(
+            std::hypot(first.x - last.x, first.y - last.y),
+            std::hypot(300.0, 200.0)
+        );
+    }
+
+    TEST(EqualRectangles, TraversalIsStableAcrossCoordinateScales) {
+        std::vector<std::size_t> expected;
+        for (const double factor : { 1.0, 1e-200, 1e200 }) {
+            const auto result = pack_equal_rectangles(
+                {
+                    .container = { 300.0 * factor, 200.0 * factor },
+                    .item = { 1.0, 1.0 },
+                    .count = 6,
+                    .orientation = orientation_constraint::horizontal_only,
+                }
+            );
+            ASSERT_TRUE(result.complete(6));
+            if (expected.empty()) {
+                expected = result.traversal;
+            }
+            EXPECT_EQ(result.traversal, expected);
+        }
+    }
+
+    TEST(EqualRectangles, TraversalIsStatelessAcrossPackingRequests) {
+        const auto original = card_request();
+        const auto before = pack_equal_rectangles(original);
+        for (const auto container :
+             { extent { 300.0, 900.0 }, extent { 1200.0, 200.0 } }) {
+            for (const auto orientation :
+                 { orientation_constraint::allow_rotation,
+                   orientation_constraint::horizontal_only,
+                   orientation_constraint::vertical_only }) {
+                for (std::size_t count = 1; count <= 64; ++count) {
+                    auto request = original;
+                    request.container = container;
+                    request.orientation = orientation;
+                    request.count = count;
+                    expect_complete_and_valid(
+                        request, pack_equal_rectangles(request)
+                    );
+                }
+            }
+        }
+        expect_same_layout(before, pack_equal_rectangles(original));
     }
 
     TEST(EqualRectangles, AutomaticDispatchHonorsOrientationConstraint) {

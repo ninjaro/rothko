@@ -52,8 +52,8 @@ jobs:
         with:
           bootstrap: "repository"
           source-path: "."
-          manifesto-repository: ""
-          manifesto-ref: ""
+          manifesto-repository: "ninjaro/ecosystem"
+          manifesto-ref: "b646833b17ff1e5036a6fd8a6d7e75bdb1eb9914"
           build-parallelism: 2
           install-docs: 'true'
           sphinx-theme-package: sphinx-rtd-theme
